@@ -1,0 +1,73 @@
+/* ── Edubot LMS — Design Tokens ─────────────────────────────── */
+:root {
+  --eb-navy:        #0F1B2D;
+  --eb-navy-mid:    #162236;
+  --eb-navy-light:  #1E3354;
+  --eb-accent:      #2563EB;
+  --eb-accent-glow: #3B82F6;
+  --eb-success:     #16A34A;
+  --eb-warning:     #D97706;
+  --eb-danger:      #DC2626;
+  --eb-slate-bg:    #F1F5F9;
+  --eb-border:      #E2E8F0;
+  --eb-text-main:   #0F172A;
+  --eb-text-muted:  #64748B;
+  --eb-sidebar-w:   240px;
+  --eb-navbar-h:    60px;
+  --eb-radius:      10px;
+  --eb-shadow-sm:   0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --eb-shadow-md:   0 4px 16px rgba(0,0,0,.10);
+  --eb-shadow-lg:   0 10px 40px rgba(0,0,0,.14);
+  --eb-transition:  all .18s cubic-bezier(.4,0,.2,1);
+}
+
+/* ── Base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--eb-slate-bg);
+  color: var(--eb-text-main);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--eb-border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
+
+/* ── Typography ────────────────────────────────────────────── */
+h1,h2,h3,h4,h5,h6 { font-weight: 700; letter-spacing: -.02em; }
+.text-muted { color: var(--eb-text-muted) !important; }
+
+/* ── Utility ───────────────────────────────────────────────── */
+.eb-card {
+  background: #fff;
+  border-radius: var(--eb-radius);
+  border: 1px solid var(--eb-border);
+  box-shadow: var(--eb-shadow-sm);
+}
+
+.eb-badge-pending  { background:#FEF3C7; color:#92400E; font-weight:600; }
+.eb-badge-approved { background:#DCFCE7; color:#166534; font-weight:600; }
+.eb-badge-rejected { background:#FEE2E2; color:#991B1B; font-weight:600; }
+.eb-badge-cancelled{ background:#F1F5F9; color:#475569; font-weight:600; }
+
+.btn-primary {
+  background: var(--eb-accent) !important;
+  border-color: var(--eb-accent) !important;
+  font-weight: 600;
+}
+.btn-primary:hover {
+  background: #1D4ED8 !important;
+  border-color: #1D4ED8 !important;
+}
+
+/* ── Page transition ───────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(10px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.page-enter { animation: fadeUp .22s ease both; }
