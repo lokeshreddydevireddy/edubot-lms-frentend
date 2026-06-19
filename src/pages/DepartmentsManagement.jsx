@@ -1,282 +1,260 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import api from '../services/api'
 
 export default function DepartmentsManagement() {
   const [search, setSearch] = useState('')
-  const [toast,  setToast]  = useState('')
   const [departments, setDepartments] = useState([])
-  const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState('')
 
-  // Add Department State
+  // Modal Triggers
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  const [selectedDept, setSelectedDept] = useState(null)
   const [formData, setFormData] = useState({ name: '', code: '', description: '', headId: '' })
+  
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+  // Used for selecting a department head
+  const [managers, setManagers] = useState([])
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true)
-      try {
-        const [deptRes, empRes] = await Promise.all([
-          api.get('/admin/departments'),
-          api.get('/admin/employees', { params: { limit: 500 } })
-        ])
-        if (deptRes.data.success) setDepartments(deptRes.data.data)
-        if (empRes.data.success) setEmployees(empRes.data.data)
-      } catch (err) {
-        console.error('Error fetching departments:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
-  }, [])
+  const showMessage = msg => { setToast(msg); setTimeout(() => setToast(''), 4000) }
+
+  const loadData = async () => {
+    try {
+      const [deptRes, empRes] = await Promise.all([
+        api.get('/admin/departments'),
+        api.get('/admin/employees?role=manager&limit=1000') // fetch all managers
+      ])
+      if (deptRes.data.success) setDepartments(deptRes.data.data)
+      if (empRes.data.success) setManagers(empRes.data.data)
+    } catch (err) { console.error(err) }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { loadData() }, [])
 
   const handleAddSubmit = async (e) => {
     e.preventDefault()
-    setSubmitting(true)
-    setFormError('')
-    
-    // Clean up payload
-    const payload = { ...formData }
-    if (!payload.headId) delete payload.headId
-
+    setSubmitting(true); setFormError('')
     try {
+      const payload = { ...formData };
+      if (!payload.headId) delete payload.headId;
+      
       const res = await api.post('/admin/departments', payload)
       if (res.data.success) {
-        // Find full head details for immediate UI update if provided
-        let newDept = res.data.data
-        if (payload.headId) {
-          const head = employees.find(emp => emp._id === payload.headId)
-          if (head) newDept.headId = { _id: head._id, name: head.name }
-        }
-        
-        setDepartments([...departments, newDept])
         setShowAddModal(false)
         setFormData({ name: '', code: '', description: '', headId: '' })
-        showToast('✓ Department created successfully!')
+        showMessage('Department provisioned successfully.')
+        loadData()
       }
-    } catch (err) {
-      setFormError(err.response?.data?.message || 'Failed to create department.')
-    } finally {
-      setSubmitting(false)
-    }
+    } catch (err) { setFormError(err.response?.data?.message || 'Provisioning failed.') }
+    finally { setSubmitting(false) }
   }
 
-  const filtered = departments.filter(d =>
-    !search || 
-    d.name?.toLowerCase().includes(search.toLowerCase()) || 
-    d.headId?.name?.toLowerCase().includes(search.toLowerCase()) || 
-    d.code?.toLowerCase().includes(search.toLowerCase())
-  )
+  const handleEditSubmit = async (e) => {
+    e.preventDefault()
+    setSubmitting(true); setFormError('')
+    try {
+      const payload = { ...selectedDept }
+      if (payload.headId && typeof payload.headId === 'object') {
+        payload.headId = payload.headId._id;
+      }
+      if (!payload.headId) delete payload.headId;
 
-  const total = departments.reduce((a, d) => a + (d.employeeCount || 0), 0)
-  const onLeave = departments.reduce((a, d) => a + (d.onLeaveCount || 0), 0)
-
-  // Default UI helpers since backend doesn't store colors and icons
-  const getStyles = (code) => {
-    const map = {
-      'ENG': { color:'#2563EB', icon:'bi-code-slash' },
-      'HR':  { color:'#16A34A', icon:'bi-people' },
-      'SLS': { color:'#7C3AED', icon:'bi-bar-chart' },
-      'FIN': { color:'#D97706', icon:'bi-currency-rupee' },
-      'IT':  { color:'#0891B2', icon:'bi-laptop' },
-      'MKT': { color:'#DB2777', icon:'bi-megaphone' },
-      'OPS': { color:'#DC2626', icon:'bi-gear' }
-    }
-    return map[code] || { color:'#475569', icon:'bi-building' }
+      await api.put(`/admin/departments/${selectedDept._id}`, payload)
+      setShowEditModal(false)
+      showMessage('Department parameter modification successful.')
+      loadData()
+    } catch (err) { setFormError(err.response?.data?.message || 'Modification failed.') }
+    finally { setSubmitting(false) }
   }
+
+  const handleDeleteExecute = async () => {
+    setSubmitting(true); setFormError('')
+    try {
+      await api.delete(`/admin/departments/${selectedDept._id}`)
+      setShowDeleteModal(false)
+      showMessage('Department deactivated securely.')
+      loadData()
+    } catch (err) { setFormError(err.response?.data?.message || 'Purge operation failed.') }
+    finally { setSubmitting(false) }
+  }
+
+  const filtered = useMemo(() => departments.filter(d => {
+    const q = search.toLowerCase()
+    if (!q) return true
+    return d.name?.toLowerCase().includes(q) || d.code?.toLowerCase().includes(q)
+  }), [search, departments])
 
   return (
     <>
       <style>{`
-        .dm-pt{font-size:22px;font-weight:800;color:var(--eb-text-main);letter-spacing:-.03em;margin-bottom:4px;}
-        .dm-ps{font-size:13px;color:var(--eb-text-muted);margin-bottom:24px;}
-        .dm-hdr{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap;}
-        .dm-search{display:flex;align-items:center;gap:8px;background:var(--eb-slate-bg);border:1.5px solid transparent;border-radius:8px;padding:7px 12px;transition:var(--eb-transition);flex:1;min-width:200px;}
-        .dm-search:focus-within{border-color:var(--eb-accent);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1);}
-        .dm-search input{border:none;background:none;outline:none;font-size:13px;font-family:inherit;color:var(--eb-text-main);width:100%;}
-        .dm-search input::placeholder{color:#94A3B8;}
-        .dm-add-btn{padding:7px 16px;background:var(--eb-accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:var(--eb-transition);display:flex;align-items:center;gap:6px;}
-        .dm-add-btn:hover{background:#1D4ED8;transform:translateY(-1px);}
-        .dm-chips{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;}
-        .dm-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;font-size:13px;font-weight:700;}
-        .dm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;}
-        .dm-card{background:#fff;border:1px solid var(--eb-border);border-radius:var(--eb-radius);box-shadow:var(--eb-shadow-sm);transition:var(--eb-transition);overflow:hidden;cursor:pointer;position:relative;}
-        .dm-card:hover{box-shadow:var(--eb-shadow-md);transform:translateY(-2px);}
-        .dm-card-accent{height:4px;border-radius:var(--eb-radius) var(--eb-radius) 0 0;}
-        .dm-card-body{padding:20px;}
-        .dm-card-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;}
-        .dm-card-left{display:flex;align-items:center;gap:12px;}
-        .dm-dept-ico{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}
-        .dm-dept-name{font-size:16px;font-weight:800;color:var(--eb-text-main);}
-        .dm-dept-code{font-size:11px;color:var(--eb-text-muted);font-family:monospace;font-weight:700;margin-top:2px;}
-        .dm-desc{font-size:12px;color:var(--eb-text-muted);line-height:1.55;margin-bottom:14px;min-height:38px;}
-        .dm-card-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
-        .dm-cs{text-align:center;background:var(--eb-slate-bg);border-radius:8px;padding:8px 4px;}
-        .dm-cs-n{font-size:18px;font-weight:800;letter-spacing:-.04em;}
-        .dm-cs-l{font-size:10px;color:var(--eb-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-top:1px;}
-        .dm-head-row{display:flex;align-items:center;gap:8px;padding-top:12px;border-top:1px solid var(--eb-border);}
-        .dm-head-ava{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;}
-        .dm-head-name{font-size:12px;font-weight:700;color:var(--eb-text-main);}
-        .dm-head-lbl{font-size:11px;color:var(--eb-text-muted);margin-left:auto;}
-        .dm-actions-row{display:flex;gap:6px;margin-top:10px;}
-        .dm-act-btn{flex:1;padding:6px;border-radius:7px;border:1.5px solid var(--eb-border);background:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:var(--eb-transition);font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;color:var(--eb-text-muted);}
-        .dm-act-btn:hover{border-color:var(--eb-accent);color:var(--eb-accent);background:#EFF6FF;}
-        .dm-act-btn.danger:hover{border-color:#FECACA;color:#DC2626;background:#FEF2F2;}
-        .dm-toast{position:fixed;bottom:24px;right:24px;z-index:1100;background:#1E293B;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);animation:slideUp .25s ease;}
-        @keyframes slideUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
-
-        /* Modal */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(3px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .modal-box { background: #fff; border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.18); width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; }
-        .modal-hdr { padding: 20px 24px; border-bottom: 1px solid var(--eb-border); display: flex; align-items: center; justify-content: space-between; }
-        .modal-hdr h5 { margin: 0; font-weight: 800; font-size: 18px; color: var(--eb-text-main); }
-        .modal-close { background: none; border: none; font-size: 20px; color: var(--eb-text-muted); cursor: pointer; }
-        .modal-body { padding: 24px; }
-        .modal-form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-        .modal-form-group label { font-size: 13px; font-weight: 600; color: var(--eb-text-main); }
-        .modal-input { padding: 9px 12px; border: 1.5px solid var(--eb-border); border-radius: 8px; font-size: 14px; font-family: inherit; transition: var(--eb-transition); }
-        .modal-input:focus { border-color: var(--eb-accent); outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
-        .modal-textarea { resize: vertical; min-height: 80px; }
-        .modal-ftr { padding: 16px 24px; border-top: 1px solid var(--eb-border); display: flex; justify-content: flex-end; gap: 10px; background: #FAFBFC; border-radius: 0 0 16px 16px; }
-        .modal-btn { padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: var(--eb-transition); }
-        .modal-btn.cancel { background: #fff; border: 1.5px solid var(--eb-border); color: var(--eb-text-main); }
-        .modal-btn.cancel:hover { background: var(--eb-slate-bg); }
-        .modal-btn.submit { background: var(--eb-accent); color: #fff; }
-        .modal-btn.submit:hover { background: #1D4ED8; }
-        .modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .form-err { background: #FEF2F2; color: #DC2626; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 16px; border: 1px solid #FECACA; }
+        .dm-pt{font-size:22px;font-weight:800;color:#0f172a;margin-bottom:4px;}
+        .dm-ps{font-size:13px;color:#64748b;margin-bottom:24px;}
+        .dm-toolbar{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid #e2e8f0;background:#fff;border-radius:12px 12px 0 0;}
+        .dm-search{display:flex;align-items:center;gap:8px;background:#f8fafc;border:1.5px solid transparent;border-radius:8px;padding:7px 12px;width:300px;}
+        .dm-search input{border:none;background:none;outline:none;font-size:13px;width:100%;}
+        .dm-add-btn{padding:8px 16px;background:#7C3AED;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;}
+        .dm-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);overflow-x:auto;}
+        .dm-table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px;}
+        .dm-table th{background:#f8fafc;padding:12px 16px;color:#64748b;text-transform:uppercase;font-size:11px;text-align:left;border-bottom:1px solid #e2e8f0;}
+        .dm-table td{padding:12px 16px;border-bottom:1px solid #e2e8f0;vertical-align:middle;}
+        .dm-icon{width:40px;height:40px;border-radius:10px;background:#F5F3FF;color:#7C3AED;display:flex;align-items:center;justify-content:center;font-size:20px;}
+        .dm-actions{display:flex;gap:6px;}
+        .dm-action-btn{width:30px;height:30px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;}
+        .dm-action-btn.danger:hover { background: #fef2f2; color: #dc2626; }
+        .m-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.4);backdrop-filter:blur(4px);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;}
+        .m-box{background:#fff;border-radius:16px;width:100%;max-width:500px;padding:24px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);}
+        .m-input{width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;margin-top:4px;outline:none;}
+        .dm-toast{position:fixed;bottom:24px;right:24px;z-index:3000;background:#0f172a;color:#fff;padding:12px 24px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+        .stat-badge { background: #f1f5f9; color: #475569; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; margin-right: 6px; }
       `}</style>
 
       {toast && <div className="dm-toast">{toast}</div>}
 
-      {showAddModal && (
-        <div className="modal-overlay" onClick={() => !submitting && setShowAddModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-hdr">
-              <h5>Add New Department</h5>
-              <button className="modal-close" onClick={() => setShowAddModal(false)}><i className="bi bi-x"/></button>
+      <div className="page-enter">
+        <div className="dm-pt">Department Directory</div>
+        <div className="dm-ps">Manage structural organizational units and their respective analytical boundaries</div>
+
+        <div className="dm-card">
+          <div className="dm-toolbar">
+            <div className="dm-search">
+              <i className="bi bi-search" />
+              <input placeholder="Filter departments..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
+            <button className="dm-add-btn" onClick={() => setShowAddModal(true)}><i className="bi bi-plus-lg me-1" /> Add Department</button>
+          </div>
+
+          <table className="dm-table">
+            <thead>
+              <tr><th>Department Identity</th><th>Sector Code</th><th>Head / Supervisor</th><th>Metrics</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {filtered.map(d => (
+                <tr key={d._id}>
+                  <td>
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="dm-icon"><i className="bi bi-diagram-3-fill" /></div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{d.name}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.description || 'No description provided'}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#475569' }}>{d.code}</td>
+                  <td>
+                    {d.headId ? (
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{d.headId.name}</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>{d.headId.email}</div>
+                      </div>
+                    ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Unassigned</span>}
+                  </td>
+                  <td>
+                    <span className="stat-badge">{d.employeeCount || 0} Emps</span>
+                    <span className="stat-badge" style={{ background: '#FEF3C7', color: '#92400E' }}>{d.onLeaveCount || 0} Away</span>
+                  </td>
+                  <td>
+                    <div className="dm-actions">
+                      <button className="dm-action-btn" onClick={() => { 
+                        const payload = { ...d };
+                        if (payload.headId) payload.headId = payload.headId._id;
+                        setSelectedDept(payload); 
+                        setShowEditModal(true); 
+                      }}><i className="bi bi-pencil" /></button>
+                      <button className="dm-action-btn danger" onClick={() => { 
+                        setSelectedDept(d); setFormError(''); setShowDeleteModal(true); 
+                      }}><i className="bi bi-trash" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && !loading && (
+                <tr><td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>No departments found matching filters</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── ADD MODAL ── */}
+      {showAddModal && (
+        <div className="m-overlay" onClick={() => !submitting && setShowAddModal(false)}>
+          <div className="m-box" onClick={e => e.stopPropagation()}>
+            <h5 className="mb-3" style={{ fontWeight: 800 }}>Create Department</h5>
+            {formError && <div className="alert alert-danger p-2" style={{ fontSize: 12 }}>{formError}</div>}
             <form onSubmit={handleAddSubmit}>
-              <div className="modal-body">
-                {formError && <div className="form-err"><i className="bi bi-exclamation-circle me-2"/>{formError}</div>}
-                <div className="modal-form-group">
-                  <label>Department Name</label>
-                  <input required className="modal-input" placeholder="e.g. Engineering" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                </div>
-                <div className="modal-form-group">
-                  <label>Department Code</label>
-                  <input required className="modal-input" placeholder="e.g. ENG" value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} />
-                </div>
-                <div className="modal-form-group">
-                  <label>Department Head (Optional)</label>
-                  <select className="modal-input" value={formData.headId} onChange={e => setFormData({...formData, headId: e.target.value})}>
-                    <option value="">Select a head</option>
-                    {employees.filter(emp => emp.role === 'manager' || emp.role === 'admin').map(emp => (
-                      <option key={emp._id} value={emp._id}>{emp.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="modal-form-group" style={{ marginBottom: 0 }}>
-                  <label>Description</label>
-                  <textarea className="modal-input modal-textarea" placeholder="Brief description of this department..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                </div>
+              <div className="mb-2"><label style={{ fontSize: 12, fontWeight: 600 }}>Department Name *</label><input required className="m-input" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></div>
+              <div className="mb-2"><label style={{ fontSize: 12, fontWeight: 600 }}>Identifier Code *</label><input required className="m-input" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} style={{ textTransform: 'uppercase' }} /></div>
+              <div className="mb-2"><label style={{ fontSize: 12, fontWeight: 600 }}>Description</label><textarea className="m-input" rows="2" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} /></div>
+              <div className="mb-2">
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Department Head</label>
+                <select className="m-input" value={formData.headId} onChange={e => setFormData({ ...formData, headId: e.target.value })}>
+                  <option value="">Unassigned</option>
+                  {managers.map(m => <option key={m._id} value={m._id}>{m.name} ({m.email})</option>)}
+                </select>
               </div>
-              <div className="modal-ftr">
-                <button type="button" className="modal-btn cancel" onClick={() => setShowAddModal(false)} disabled={submitting}>Cancel</button>
-                <button type="submit" className="modal-btn submit" disabled={submitting}>{submitting ? 'Saving...' : 'Add Department'}</button>
+              <div className="d-flex gap-2 justify-content-end mt-4">
+                <button type="button" className="btn btn-light" onClick={() => setShowAddModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ background: '#7C3AED', border: 'none' }} disabled={submitting}>Deploy</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      <div className="page-enter">
-        <div className="dm-pt">Departments Management</div>
-        <div className="dm-ps">Manage organizational departments, heads, and team structures</div>
-
-        <div className="dm-hdr">
-          <div className="dm-search">
-            <i className="bi bi-search" style={{color:'#94A3B8',fontSize:14}}/>
-            <input placeholder="Search department, head, or code…" value={search} onChange={e => setSearch(e.target.value)}/>
+      {/* ── EDIT MODAL ── */}
+      {showEditModal && selectedDept && (
+        <div className="m-overlay" onClick={() => !submitting && setShowEditModal(false)}>
+          <div className="m-box" onClick={e => e.stopPropagation()}>
+            <h5 className="mb-3" style={{ fontWeight: 800 }}>Edit Department</h5>
+            {formError && <div className="alert alert-danger p-2" style={{ fontSize: 12 }}>{formError}</div>}
+            <form onSubmit={handleEditSubmit}>
+              <div className="mb-2"><label style={{ fontSize: 12, fontWeight: 600 }}>Department Name *</label><input required className="m-input" value={selectedDept.name} onChange={e => setSelectedDept({ ...selectedDept, name: e.target.value })} /></div>
+              <div className="mb-2"><label style={{ fontSize: 12, fontWeight: 600 }}>Identifier Code *</label><input required className="m-input" value={selectedDept.code} onChange={e => setSelectedDept({ ...selectedDept, code: e.target.value })} style={{ textTransform: 'uppercase' }} /></div>
+              <div className="mb-2"><label style={{ fontSize: 12, fontWeight: 600 }}>Description</label><textarea className="m-input" rows="2" value={selectedDept.description || ''} onChange={e => setSelectedDept({ ...selectedDept, description: e.target.value })} /></div>
+              <div className="mb-2">
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Department Head</label>
+                <select className="m-input" value={selectedDept.headId || ''} onChange={e => setSelectedDept({ ...selectedDept, headId: e.target.value })}>
+                  <option value="">Unassigned</option>
+                  {managers.map(m => <option key={m._id} value={m._id}>{m.name} ({m.email})</option>)}
+                </select>
+              </div>
+              <div className="d-flex gap-2 justify-content-end mt-4">
+                <button type="button" className="btn btn-light" onClick={() => setShowEditModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ background: '#7C3AED', border: 'none' }} disabled={submitting}>Save Changes</button>
+              </div>
+            </form>
           </div>
-          <button className="dm-add-btn" onClick={() => setShowAddModal(true)}>
-            <i className="bi bi-plus"/>Add Department
-          </button>
         </div>
+      )}
 
-        <div className="dm-chips">
-          <div className="dm-chip" style={{background:'#EFF6FF',color:'#2563EB'}}><i className="bi bi-building"/>{departments.length} departments</div>
-          <div className="dm-chip" style={{background:'#F0FDF4',color:'#16A34A'}}><i className="bi bi-people"/>{total} total employees</div>
-          <div className="dm-chip" style={{background:'#FEF3C7',color:'#92400E'}}><i className="bi bi-calendar-minus"/>{onLeave} currently on leave</div>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-5 text-muted">Loading departments...</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-5 text-muted">No data available</div>
-        ) : (
-          <div className="dm-grid">
-            {filtered.map(d => {
-              const styles = getStyles(d.code)
-              const activeCount = Math.max(0, (d.employeeCount || 0) - (d.onLeaveCount || 0))
-              const headName = d.headId?.name || 'Unassigned'
-              const headAvatar = headName !== 'Unassigned' ? headName.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase() : '?'
-              return (
-                <div key={d._id} className="dm-card">
-                  <div className="dm-card-accent" style={{background:styles.color}}/>
-                  <div className="dm-card-body">
-                    <div className="dm-card-top">
-                      <div className="dm-card-left">
-                        <div className="dm-dept-ico" style={{background:styles.color+'18',color:styles.color}}>
-                          <i className={`bi ${styles.icon}`}/>
-                        </div>
-                        <div>
-                          <div className="dm-dept-name">{d.name}</div>
-                          <div className="dm-dept-code">{d.code}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="dm-desc">{d.description || 'No description provided.'}</div>
-
-                    <div className="dm-card-stats">
-                      <div className="dm-cs">
-                        <div className="dm-cs-n" style={{color:styles.color}}>{d.employeeCount || 0}</div>
-                        <div className="dm-cs-l">Total</div>
-                      </div>
-                      <div className="dm-cs">
-                        <div className="dm-cs-n" style={{color:'#16A34A'}}>{activeCount}</div>
-                        <div className="dm-cs-l">Active</div>
-                      </div>
-                      <div className="dm-cs">
-                        <div className="dm-cs-n" style={{color: (d.onLeaveCount || 0) > 0 ? '#D97706' : '#94A3B8'}}>{d.onLeaveCount || 0}</div>
-                        <div className="dm-cs-l">On Leave</div>
-                      </div>
-                    </div>
-
-                    <div className="dm-head-row">
-                      <div className="dm-head-ava" style={{background:styles.color}}>{headAvatar}</div>
-                      <div className="dm-head-name">{headName}</div>
-                      <div className="dm-head-lbl"><i className="bi bi-person-badge me-1"/>Head</div>
-                    </div>
-
-                    <div className="dm-actions-row">
-                      <button className="dm-act-btn" onClick={() => showToast(`Viewing ${d.name} details`)}><i className="bi bi-eye"/>View</button>
-                      <button className="dm-act-btn" onClick={() => showToast(`Editing ${d.name}`)}><i className="bi bi-pencil"/>Edit</button>
-                      <button className="dm-act-btn danger" onClick={() => showToast(`Cannot delete ${d.name} — has active employees`)}><i className="bi bi-trash"/>Delete</button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+      {/* ── DELETE MODAL ── */}
+      {showDeleteModal && selectedDept && (
+        <div className="m-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="m-box text-center" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 40 }} className="mb-2">⚠️</div>
+            <h5 style={{ fontWeight: 800 }}>Deactivate Department</h5>
+            <p className="text-muted mb-2">Are you sure you want to deactivate <strong>{selectedDept.name}</strong>?</p>
+            {selectedDept.employeeCount > 0 && (
+              <div className="alert alert-warning p-2" style={{ fontSize: 12, textAlign: 'left' }}>
+                <strong>Warning:</strong> This department has {selectedDept.employeeCount} active employee(s). 
+                The system will block this action until all employees are reassigned.
+              </div>
+            )}
+            {formError && <div className="alert alert-danger p-2 mt-2" style={{ fontSize: 12, textAlign: 'left' }}>{formError}</div>}
+            
+            <div className="d-flex gap-2 justify-content-center mt-4">
+              <button className="btn btn-light" onClick={() => setShowDeleteModal(false)}>Cancel</button>
+              <button className="btn btn-danger" style={{ background: '#dc2626' }} onClick={handleDeleteExecute} disabled={submitting}>Deactivate</button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </>
   )
 }

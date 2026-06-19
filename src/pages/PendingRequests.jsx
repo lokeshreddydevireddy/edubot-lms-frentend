@@ -53,7 +53,7 @@ export default function PendingRequests() {
     const q = search.toLowerCase()
     const empName = r.employeeId?.name || ''
     const deptName = r.employeeId?.department?.name || ''
-    if (q && !empName.toLowerCase().includes(q) && !r.leaveType.toLowerCase().includes(q) && !r.refId.toLowerCase().includes(q)) return false
+    if (q && !empName.toLowerCase().includes(q) && !r.leaveType.toLowerCase().includes(q) && !r.refId?.toLowerCase().includes(q)) return false
     if (deptFlt !== 'All Departments' && deptName !== deptFlt) return false
     return true
   })

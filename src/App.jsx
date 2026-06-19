@@ -25,6 +25,14 @@ function ProtectedRoute({ children }) {
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
+function RoleRoute({ children, allowedRoles }) {
+  const { user } = useAuth()
+  if (!user || !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return children
+}
+
 function PublicRoute({ children }) {
   const { isAuthenticated } = useAuth()
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : children
@@ -56,22 +64,24 @@ export default function App() {
           >
             {/* ── Common ─────────────────────────────────── */}
             <Route index                  element={<DashboardHome />} />
-            <Route path="apply"           element={<ApplyLeave />} />
-            <Route path="my-leaves"       element={<MyLeaves />} />
-            <Route path="balance"         element={<LeaveBalance />} />
+            
+            {/* ── Employee ───────────────────────────────── */}
+            <Route path="apply"           element={<RoleRoute allowedRoles={['employee']}><ApplyLeave /></RoleRoute>} />
+            <Route path="my-leaves"       element={<RoleRoute allowedRoles={['employee']}><MyLeaves /></RoleRoute>} />
+            <Route path="balance"         element={<RoleRoute allowedRoles={['employee']}><LeaveBalance /></RoleRoute>} />
 
             {/* ── Manager ────────────────────────────────── */}
-            <Route path="pending"         element={<PendingRequests />} />
-            <Route path="approved"        element={<ApprovedRequests />} />
-            <Route path="rejected"        element={<RejectedRequests />} />
-            <Route path="team"            element={<TeamCalendar />} />
+            <Route path="pending"         element={<RoleRoute allowedRoles={['manager']}><PendingRequests /></RoleRoute>} />
+            <Route path="approved"        element={<RoleRoute allowedRoles={['manager']}><ApprovedRequests /></RoleRoute>} />
+            <Route path="rejected"        element={<RoleRoute allowedRoles={['manager']}><RejectedRequests /></RoleRoute>} />
+            <Route path="team"            element={<RoleRoute allowedRoles={['manager']}><TeamCalendar /></RoleRoute>} />
 
             {/* ── Admin ──────────────────────────────────── */}
-            <Route path="users"           element={<UserManagement />} />
-            <Route path="departments"     element={<DepartmentsManagement />} />
-            <Route path="leave-types"     element={<LeaveTypes />} />
-            <Route path="reports"         element={<Reports />} />
-            <Route path="audit"           element={<AuditLogs />} />
+            <Route path="users"           element={<RoleRoute allowedRoles={['admin']}><UserManagement /></RoleRoute>} />
+            <Route path="departments"     element={<RoleRoute allowedRoles={['admin']}><DepartmentsManagement /></RoleRoute>} />
+            <Route path="leave-types"     element={<RoleRoute allowedRoles={['admin']}><LeaveTypes /></RoleRoute>} />
+            <Route path="reports"         element={<RoleRoute allowedRoles={['admin']}><Reports /></RoleRoute>} />
+            <Route path="audit"           element={<RoleRoute allowedRoles={['admin']}><AuditLogs /></RoleRoute>} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
